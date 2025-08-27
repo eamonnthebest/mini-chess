@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mini Multiplayer Chess</title>
+<style>
+  body { font-family: sans-serif; padding: 8px; }
+  #board { width: 100%; max-width: 480px; aspect-ratio: 1/1; display: grid; grid-template-columns: repeat(8,1fr); border: 2px solid #333; margin-bottom: 12px; touch-action: manipulation; }
+  .cell { display:flex; align-items:center; justify-content:center; font-size:24px; user-select:none; }
+  .cell.light { background:#f0d9b5; }
+  .cell.dark { background:#b58863; }
+  #log { white-space: pre-wrap; font-size:14px; max-width:480px; }
+</style>
+</head>
+<body>
+<h3>Mini Multiplayer Chess</h3>
+<div id="board"></div>
+<div id="info">Not connected</div>
+<pre id="log"></pre>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chess.js@1.0.0-beta.2/dist/chess.min.js"></script>
+<script>
+const socket = io();
+let chess = new Chess();
+let myId=null, myRoom=null, myColor=null, selected=null;
+const boardEl=document.getElementById('board'), info=document.getElementById('info'), log=document.getElementById('log');
+
+function drawBoard(fen){
+  const map={p:'♟',r:'♜',n:'♞',b:'♝',q:'♛',k:'♚',P:'♙',R:'♖',N:'♘',B:'♗',Q:'♕',K:'♔'};
+  boardEl.innerHTML='';
+  const rows=fen.split(' ')[0].split('/');
+  for(let r=0;r<8;r++){
+    const row=rows[r]; let c=0;
+    for(const ch of row){
+      if(/\d/.test(ch)){for(let i=0;i<+ch;i++){makeCell(r,c++,'');}}
+      else{makeCell(r,c++,map[ch]||'');}
+    }
+  }
+}
+function makeCell(r,c,text){
+  const el=document.createElement('div');
+  el.className='cell '+(((r+c)%2)?'dark':'light');
+  el.textContent=text; el.dataset.coord='abcdefgh'[c]+(8-r);
+  el.onclick=()=>onClick(el.dataset.coord);
+  boardEl.appendChild(el);
+}
+function onClick(coord){
+  if(!selected){
+    const piece=chess.get(coord);
+    if(piece&&((myColor==='white'&&piece.color==='w')||(myColor==='black'&&piece.color==='b'))) selected=coord;
+  } else {
+    const move=chess.move({from:selected,to:coord,promotion:'q'});
+    if(move){socket.emit('makeMove',{room:myRoom,from:selected,to:coord,promotion:'q'});}
+    selected=null; drawBoard(chess.fen());
+  }
+}
+socket.on('connect',()=>{myId=socket.id; info.textContent='Connected';});
+socket.on('startGame',(d)=>{myRoom=d.room; myColor=(d.white===myId?'white':'black'); chess=new Chess(d.fen); drawBoard(d.fen); info.textContent='You are '+myColor;});
+socket.on('moveMade',(m)=>{chess=new Chess(m.fen); drawBoard(m.fen); log.textContent+='Move: '+m.san+'\n';});
+socket.on('illegal',()=>{log.textContent+='Illegal move!\n';});
+socket.on('opponentLeft',()=>{info.textContent='Opponent left';});
+</script>
+</body>
+</html>
